@@ -49,14 +49,20 @@ class RegistrationStates(StatesGroup):
 class AddStateFSM(StatesGroup):
     enter_user_id = State()
 
+name_mapping = {}  # Словарь для хранения соответствия идентификаторов и имен администраторов
+
+
 class RegistrationAdmin(StatesGroup):
     admin_name = State()
 
 @dp.message_handler(Command('start'))
 async def start_command(message: types.Message):
-    #Разделение старт команды на плебеев и бояр
     if check_admins(message.from_user.id):
-        await message.answer("Вы администратор. Доступ к /csv разрешён, но перед этим представьтесь")
+        if message.from_user.id not in name_mapping:
+            await message.answer("Вы администратор. Доступ к /csv разрешён, но перед этим представьтесь.")
+            await RegistrationAdmin.admin_name.set()
+        else:
+            await message.answer("Вы уже зарегистрированы в боте.")
     else:
         # Создаем меню с кнопкой "Начать регистрацию"
         start_registration_button = InlineKeyboardButton("Начать регистрацию", callback_data='start_registration')
@@ -64,6 +70,31 @@ async def start_command(message: types.Message):
 
         # Отправляем сообщение с кнопкой
         await message.answer("Привет, это тест бот для INEX.", reply_markup=start_registration_menu)
+
+
+@dp.message_handler(state=RegistrationAdmin.admin_name)
+async def process_admin_name(message: types.Message, state: FSMContext):
+    admin_id = message.from_user.id
+    name_mapping[admin_id] = message.text
+
+    await state.finish()
+    await message.answer("Спасибо! Ваше имя зарегистрировано.")
+
+
+@dp.message_handler(Command('admins'))
+async def admins_command(message: types.Message):
+    if check_admins(message.from_user.id):
+        response_message = "Список администраторов:\n"
+        for admin_id in ADMIN:
+            name = name_mapping.get(admin_id)
+            if name:
+                response_message += f"- {admin_id}: {name}\n"
+            else:
+                response_message += f"- {admin_id}: не зарегистрирован в боте\n"
+
+        await message.answer(response_message)
+    else:
+        await message.answer("У вас нет доступа к этой команде.")
 
 
 @dp.callback_query_handler(lambda query: query.data == 'start_registration')
@@ -192,17 +223,6 @@ async def add_user_id_handler(message: Message, state: FSMContext):
 
     await state.finish()
 
-
-@dp.message_handler(Command('admins'))
-async def admins_command(message: types.Message):
-    if check_admins(message.from_user.id):
-        response_message = "Список администраторов:\n"
-        for admin in ADMIN:
-            response_message += f"- {admin}\n"
-
-        await message.answer(response_message)
-    else:
-        await message.answer("У вас нет доступа к этой команде.")
 
 
 
